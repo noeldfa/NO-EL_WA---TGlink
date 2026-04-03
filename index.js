@@ -15,14 +15,31 @@ const PORT = process.env.PORT || 3000;
 
 if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN");
 
-/* ================== STATE ================== */
+/* ================== BOT ================== */
 
 const bot = new Telegraf(BOT_TOKEN);
 
-/* 🔥 CRITICAL: Middleware FIRST */
-bot.use(require('telegraf').session());
+/* ✅ Middleware FIRST */
+bot.use(session());
+
+/* 🔥 DEBUG: confirm updates enter Telegraf */
+bot.use((ctx, next) => {
+    console.log("👉 UPDATE TYPE:", ctx.updateType);
+    return next();
+});
+
+/* 🔥 FALLBACK TEST (VERY IMPORTANT) */
+bot.on('text', (ctx, next) => {
+    console.log("📩 TEXT RECEIVED:", ctx.message.text);
+    return next();
+});
+
+/* ================== EXPRESS ================== */
 
 const app = express();
+app.use(express.json());
+
+/* ================== STATE ================== */
 
 const activeSockets = new Map();
 global.activeSockets = activeSockets;
@@ -80,18 +97,13 @@ const statuses = require('./statuses');
 
 /* ================== INIT MODULES ================== */
 
-waManager.init({
-    bot,
-    activeSockets,
-    assignments,
-    messagingState
-});
+waManager.init({ bot, activeSockets, assignments, messagingState });
 
 groups.init({ bot, assignments, messagingState });
 inbox.init({ bot, assignments, messagingState });
 statuses.init({ bot, assignments, messagingState });
 
-console.log("Commands init about to run");
+console.log("Commands init starting...");
 
 commands.init({
     bot,
@@ -136,20 +148,7 @@ async function restoreSessions() {
     }
 }
 
-/* ================== KEEP ALIVE ================== */
-
-setInterval(async () => {
-    try {
-        const res = await bot.telegram.getMe();
-        console.log("PING OK:", res.username);
-    } catch (e) {
-        console.log("PING FAIL:", e.message);
-    }
-}, 180000);
-
 /* ================== WEBHOOK ================== */
-
-app.use(express.json());
 
 const WEBHOOK_PATH = `/bot${BOT_TOKEN}`;
 const WEBHOOK_URL = `https://no-elwa-tglink-production.up.railway.app${WEBHOOK_PATH}`;
@@ -184,15 +183,14 @@ app.get('/', (req, res) => {
             console.log(`HTTP Server running on port ${PORT}`);
 
             try {
-                await bot.telegram.setWebhook(WEBHOOK_URL);
-                console.log("Webhook set:", WEBHOOK_URL);
+                await bot.telegram.setWebhook(WEBHOOK_URL, {
+                    drop_pending_updates: true
+                });
+
+                console.log("🌐 Webhook set:", WEBHOOK_URL);
             } catch (err) {
                 console.error("Webhook setup error:", err);
             }
-        });
-
-        bot.on('message', (ctx) => {
-            console.log("📩 MESSAGE:", ctx.message?.text);
         });
 
     } catch (err) {
