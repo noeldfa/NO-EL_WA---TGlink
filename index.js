@@ -2,7 +2,7 @@ console.log("FILE STARTED");
 
 require('dotenv').config();
 
-const { Telegraf } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const fs = require('fs/promises');
 const path = require('path');
 const express = require('express');
@@ -18,6 +18,10 @@ if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN");
 /* ================== STATE ================== */
 
 const bot = new Telegraf(BOT_TOKEN);
+
+/* 🔥 CRITICAL: Middleware FIRST */
+bot.use(require('telegraf').session());
+
 const app = express();
 
 const activeSockets = new Map();
@@ -87,6 +91,8 @@ groups.init({ bot, assignments, messagingState });
 inbox.init({ bot, assignments, messagingState });
 statuses.init({ bot, assignments, messagingState });
 
+console.log("Commands init about to run");
+
 commands.init({
     bot,
     waManager,
@@ -107,6 +113,8 @@ commands.init({
 
     savePremium: () => saveJSON(PREM_FILE, [...premiumUsers])
 });
+
+console.log("Commands init finished");
 
 /* ================== RESTORE SESSIONS ================== */
 
@@ -139,14 +147,13 @@ setInterval(async () => {
     }
 }, 180000);
 
-/* ================== WEBHOOK SETUP ================== */
+/* ================== WEBHOOK ================== */
 
 app.use(express.json());
 
 const WEBHOOK_PATH = `/bot${BOT_TOKEN}`;
 const WEBHOOK_URL = `https://no-elwa-tglink-production.up.railway.app${WEBHOOK_PATH}`;
 
-/* 🔥 TELEGRAM WEBHOOK HANDLER */
 app.post(WEBHOOK_PATH, async (req, res) => {
     console.log("🔥 WEBHOOK HIT");
 
@@ -159,7 +166,6 @@ app.post(WEBHOOK_PATH, async (req, res) => {
     }
 });
 
-/* TEST ROUTE */
 app.get('/', (req, res) => {
     res.send('Bot is running');
 });
@@ -186,7 +192,7 @@ app.get('/', (req, res) => {
         });
 
         bot.on('message', (ctx) => {
-            console.log("MESSAGE:", ctx.message?.text);
+            console.log("📩 MESSAGE:", ctx.message?.text);
         });
 
     } catch (err) {
