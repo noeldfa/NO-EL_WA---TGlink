@@ -110,7 +110,16 @@ app.use(express.json());
 app.get('/', (req, res) => {
     res.send('Bot is running');
 });
-
+bot.use((ctx, next) => {
+    console.log("UPDATE RECEIVED IN BOT:", ctx.updateType);
+    return next();
+});
+bot.telegram.getMe().then(() => {
+    console.log("Bot connected to Telegram");
+});
+bot.catch((err) => {
+    console.error("BOT ERROR:", err);
+});
 /* ✅ TELEGRAM WEBHOOK ROUTE */
 app.post(`/bot${BOT_TOKEN}`, (req, res) => {
     console.log("🔥 WEBHOOK HIT");
