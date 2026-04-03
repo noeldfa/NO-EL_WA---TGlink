@@ -11,29 +11,49 @@ function init(ctx) {
 
     const OWNER_ID = Number(process.env.OWNER_ID);
 
+    console.log("✅ Commands module loaded");
+
     function sessionKey(chatId, number) {
         return `${chatId}_${number}`;
     }
 
-    bot.start(ctx => ctx.reply("🤖 Ready"));
+    /* ================== BASIC ================== */
+
+    bot.start((ctx) => {
+        console.log("START COMMAND RECEIVED");
+        ctx.reply("🤖 Ready");
+    });
+
+    /* ================== PAIR ================== */
 
     bot.command('pair', (ctx) => {
-    const n = ctx.message.text.split(' ')[1]?.replace(/[^0-9]/g, '');
+        const n = ctx.message.text.split(' ')[1]?.replace(/[^0-9]/g, '');
 
-    if (!n) {
-        return ctx.reply("Usage: /pair 233XXXXXXXXX");
-    }
+        if (!n) {
+            return ctx.reply("Usage: /pair 233XXXXXXXXX");
+        }
 
-    ctx.reply("⏳ Initializing WhatsApp...");
+        ctx.reply("⏳ Initializing WhatsApp...");
 
-    setTimeout(() => {
-        startWhatsApp(ctx.chat.id, n);
-    }, 1000);
-});
+        setTimeout(() => {
+            try {
+                waManager.start(ctx.chat.id, n); // ✅ FIXED
+            } catch (err) {
+                console.error("PAIR ERROR:", err);
+                ctx.reply("❌ Failed to start WhatsApp session");
+            }
+        }, 1000);
+    });
+
+    /* ================== ASSIGN ================== */
 
     bot.command('assign', async (ctx) => {
         const [_, groupId, number] = ctx.message.text.split(' ');
         const key = sessionKey(ctx.chat.id, number);
+
+        if (!groupId || !number) {
+            return ctx.reply("Usage: /assign <groupId> <number>");
+        }
 
         assignments.set(key, Number(groupId));
         messagingState.set(key, true);
@@ -43,9 +63,15 @@ function init(ctx) {
         ctx.reply("✅ Assigned");
     });
 
+    /* ================== MESSAGING ================== */
+
     bot.command('messaging', async (ctx) => {
         const [_, number, state] = ctx.message.text.split(' ');
         const key = sessionKey(ctx.chat.id, number);
+
+        if (!number || !state) {
+            return ctx.reply("Usage: /messaging <number> <on/off>");
+        }
 
         messagingState.set(key, state === 'on');
         await saveAssignments();
@@ -53,12 +79,14 @@ function init(ctx) {
         ctx.reply(`Messaging ${state}`);
     });
 
-    /* ===== PREMIUM ===== */
+    /* ================== PREMIUM ================== */
 
     bot.command('addprem', async (ctx) => {
         if (ctx.from.id !== OWNER_ID) return;
 
         const id = Number(ctx.message.text.split(' ')[1]);
+        if (!id) return ctx.reply("Usage: /addprem <userId>");
+
         premiumUsers.add(id);
 
         await savePremium();
@@ -69,6 +97,8 @@ function init(ctx) {
         if (ctx.from.id !== OWNER_ID) return;
 
         const id = Number(ctx.message.text.split(' ')[1]);
+        if (!id) return ctx.reply("Usage: /delprem <userId>");
+
         premiumUsers.delete(id);
 
         await savePremium();
@@ -81,6 +111,12 @@ function init(ctx) {
                 ? "✅ Premium"
                 : "❌ Free"
         );
+    });
+
+    /* ================== DEBUG ================== */
+
+    bot.on('message', (ctx) => {
+        console.log("📩 MESSAGE:", ctx.message?.text);
     });
 }
 
