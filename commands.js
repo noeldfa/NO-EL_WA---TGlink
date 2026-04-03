@@ -17,16 +17,28 @@ function init(ctx) {
         return `${chatId}_${number}`;
     }
 
-    /* ================== BASIC ================== */
+    /* ================== GLOBAL DEBUG ================== */
 
-    bot.start((ctx) => {
-    console.log("START COMMAND HIT");
-    ctx.reply("Bot is alive ✅");
-});
+    bot.use(async (ctx, next) => {
+        console.log("🔥 UPDATE RECEIVED IN TELEGRAF");
 
-    /* ================== PAIR ================== */
+        if (ctx.message) {
+            console.log("👉 MESSAGE TEXT:", ctx.message.text);
+        }
 
-    bot.command('pair', (ctx) => {
+        return next();
+    });
+
+    /* ================== FORCE COMMAND PARSER ================== */
+
+    bot.hears(/^\/start/, (ctx) => {
+        console.log("✅ START TRIGGERED");
+        ctx.reply("Bot is alive ✅");
+    });
+
+    bot.hears(/^\/pair/, (ctx) => {
+        console.log("✅ PAIR TRIGGERED");
+
         const n = ctx.message.text.split(' ')[1]?.replace(/[^0-9]/g, '');
 
         if (!n) {
@@ -37,7 +49,7 @@ function init(ctx) {
 
         setTimeout(() => {
             try {
-                waManager.start(ctx.chat.id, n); // ✅ FIXED
+                waManager.start(ctx.chat.id, n);
             } catch (err) {
                 console.error("PAIR ERROR:", err);
                 ctx.reply("❌ Failed to start WhatsApp session");
@@ -47,7 +59,7 @@ function init(ctx) {
 
     /* ================== ASSIGN ================== */
 
-    bot.command('assign', async (ctx) => {
+    bot.hears(/^\/assign/, async (ctx) => {
         const [_, groupId, number] = ctx.message.text.split(' ');
         const key = sessionKey(ctx.chat.id, number);
 
@@ -65,7 +77,7 @@ function init(ctx) {
 
     /* ================== MESSAGING ================== */
 
-    bot.command('messaging', async (ctx) => {
+    bot.hears(/^\/messaging/, async (ctx) => {
         const [_, number, state] = ctx.message.text.split(' ');
         const key = sessionKey(ctx.chat.id, number);
 
@@ -81,42 +93,36 @@ function init(ctx) {
 
     /* ================== PREMIUM ================== */
 
-    bot.command('addprem', async (ctx) => {
+    bot.hears(/^\/addprem/, async (ctx) => {
         if (ctx.from.id !== OWNER_ID) return;
 
         const id = Number(ctx.message.text.split(' ')[1]);
         if (!id) return ctx.reply("Usage: /addprem <userId>");
 
         premiumUsers.add(id);
-
         await savePremium();
+
         ctx.reply("✅ Added premium");
     });
 
-    bot.command('delprem', async (ctx) => {
+    bot.hears(/^\/delprem/, async (ctx) => {
         if (ctx.from.id !== OWNER_ID) return;
 
         const id = Number(ctx.message.text.split(' ')[1]);
         if (!id) return ctx.reply("Usage: /delprem <userId>");
 
         premiumUsers.delete(id);
-
         await savePremium();
+
         ctx.reply("❌ Removed premium");
     });
 
-    bot.command('prem', (ctx) => {
+    bot.hears(/^\/prem/, (ctx) => {
         ctx.reply(
             premiumUsers.has(ctx.from.id)
                 ? "✅ Premium"
                 : "❌ Free"
         );
-    });
-
-    /* ================== DEBUG ================== */
-
-    bot.on('message', (ctx) => {
-        console.log("📩 MESSAGE:", ctx.message?.text);
     });
 }
 
