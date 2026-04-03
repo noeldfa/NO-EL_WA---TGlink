@@ -1,168 +1,68 @@
-console.log("FILE STARTED");
-
 require('dotenv').config();
 
 const { Telegraf } = require('telegraf');
-const fs = require('fs/promises');
-const path = require('path');
 const express = require('express');
 
-/* ================== ENV ================== */
-
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const OWNER_ID = Number(process.env.OWNER_ID);
-const PORT = process.env.PORT || 3000;
-
-if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN");
-
-/* ================== STATE ================== */
-
-const bot = new Telegraf(BOT_TOKEN);
 const app = express();
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const activeSockets = new Map();
-global.activeSockets = activeSockets;
-
-const assignments = new Map();
-const messagingState = new Map();
-const premiumUsers = new Set();
-
-/* ================== PATHS ================== */
-
-const DB_PATH = './database';
-const SESS_PATH = path.join(DB_PATH, 'sessions');
-const ASSIGN_FILE = path.join(DB_PATH, 'assignments.json');
-const PREM_FILE = path.join(DB_PATH, 'premium.json');
-
-/* ================== UTIL ================== */
-
-async function ensureDirs() {
-    await fs.mkdir(SESS_PATH, { recursive: true });
-}
-
-async function loadJSON(file, fallback) {
-    try {
-        return JSON.parse(await fs.readFile(file));
-    } catch {
-        return fallback;
-    }
-}
-
-async function saveJSON(file, data) {
-    await fs.writeFile(file, JSON.stringify(data, null, 2));
-}
-
-/* ================== LOAD DATA ================== */
-
-async function loadData() {
-    const assignData = await loadJSON(ASSIGN_FILE, {});
-
-    Object.entries(assignData).forEach(([k, v]) => {
-        assignments.set(k, v.groupId);
-        messagingState.set(k, v.enabled);
-    });
-
-    const premData = await loadJSON(PREM_FILE, []);
-    premData.forEach(id => premiumUsers.add(id));
-}
-
-/* ================== MODULES ================== */
-
-const waManager = require('./waManager');
-const commands = require('./commands');
-const groups = require('./groups');
-const inbox = require('./inbox');
-const statuses = require('./statuses');
-
-/* ================== INIT MODULES ================== */
-
-waManager.init({
-    bot,
-    activeSockets,
-    assignments,
-    messagingState
-});
-
-groups.init({ bot, assignments, messagingState });
-inbox.init({ bot, assignments, messagingState });
-statuses.init({ bot, assignments, messagingState });
-
-commands.init({
-    bot,
-    waManager,
-    assignments,
-    messagingState,
-    premiumUsers,
-    OWNER_ID,
-
-    saveAssignments: () => saveJSON(
-        ASSIGN_FILE,
-        Object.fromEntries(
-            [...assignments.entries()].map(([k, v]) => [k, {
-                groupId: v,
-                enabled: messagingState.get(k)
-            }])
-        )
-    ),
-
-    savePremium: () => saveJSON(PREM_FILE, [...premiumUsers])
-});
-
-/* ================== RESTORE SESSIONS ================== */
-
-async function restoreSessions() {
-    try {
-        const dirs = await fs.readdir(SESS_PATH);
-
-        for (const dir of dirs) {
-            if (!dir.includes('_')) continue;
-
-            const [chatId, number] = dir.split('_');
-
-            setTimeout(() => {
-                waManager.start(Number(chatId), number, true);
-            }, 2000);
-        }
-    } catch (err) {
-        console.error("Restore error:", err.message);
-    }
-}
-
-/* ================== EXPRESS ================== */
+const PORT = process.env.PORT || 3000;
+const DOMAIN = "https://no-elwa-tglink-production.up.railway.app";
+const WEBHOOK_PATH = `/bot${process.env.BOT_TOKEN}`;
 
 app.use(express.json());
 
-const WEBHOOK_PATH = `/bot${BOT_TOKEN}`;
+/* ================== FORCE TELEGRAM → TELEGRAF ================== */
 
-/* 🔥 THIS IS THE FIX */
-app.use(bot.webhookCallback(WEBHOOK_PATH));
+app.post(WEBHOOK_PATH, async (req, res) => {
+    try {
+        console.log("🔥 WEBHOOK HIT");
 
-app.get('/', (req, res) => {
-    res.send('Bot is running');
+        await bot.handleUpdate(req.body);
+
+        console.log("✅ UPDATE PROCESSED");
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error("❌ UPDATE ERROR:", err);
+        res.sendStatus(500);
+    }
+});
+
+/* ================== HARD DEBUG ================== */
+
+bot.use(async (ctx, next) => {
+    console.log("👉 UPDATE TYPE:", ctx.updateType);
+
+    if (ctx.message) {
+        console.log("📩 TEXT:", ctx.message.text);
+    }
+
+    return next();
+});
+
+/* ================== GUARANTEED RESPONSE ================== */
+
+bot.hears(/.*/, (ctx) => {
+    console.log("💬 FALLBACK TRIGGERED");
+    ctx.reply("✅ BOT IS RESPONDING");
 });
 
 /* ================== START ================== */
 
 (async () => {
     try {
-        console.log("Starting bot...");
+        await bot.telegram.deleteWebhook(); // 🔥 CLEAR OLD BUGS
 
-        await ensureDirs();
-        await loadData();
-        await restoreSessions();
+        await bot.telegram.setWebhook(DOMAIN + WEBHOOK_PATH);
 
-        /* ✅ SET WEBHOOK */
-        const domain = "https://no-elwa-tglink-production.up.railway.app";
-
-        await bot.telegram.setWebhook(domain + WEBHOOK_PATH);
-
-        console.log("🌐 Webhook set:", domain + WEBHOOK_PATH);
+        console.log("🌐 Webhook set:", DOMAIN + WEBHOOK_PATH);
 
         app.listen(PORT, () => {
-            console.log(`HTTP Server running on port ${PORT}`);
+            console.log("🚀 Server running on port", PORT);
         });
 
     } catch (err) {
-        console.error("STARTUP ERROR:", err);
+        console.error("START ERROR:", err);
     }
 })();
