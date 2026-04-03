@@ -76,7 +76,12 @@ const statuses = require('./statuses');
 
 /* ================== INIT MODULES ================== */
 
-waManager.init({ bot, activeSockets, assignments, messagingState });
+waManager.init({
+    bot,
+    activeSockets,
+    assignments,
+    messagingState
+});
 
 groups.init({ bot, assignments, messagingState });
 inbox.init({ bot, assignments, messagingState });
@@ -103,30 +108,60 @@ commands.init({
     savePremium: () => saveJSON(PREM_FILE, [...premiumUsers])
 });
 
-/* ================== EXPRESS ================== */
+/* ================== RESTORE SESSIONS ================== */
+
+async function restoreSessions() {
+    try {
+        const dirs = await fs.readdir(SESS_PATH);
+
+        for (const dir of dirs) {
+            if (!dir.includes('_')) continue;
+
+            const [chatId, number] = dir.split('_');
+
+            setTimeout(() => {
+                waManager.start(Number(chatId), number, true);
+            }, 2000);
+        }
+    } catch (err) {
+        console.error("Restore error:", err.message);
+    }
+}
+
+/* ================== KEEP ALIVE ================== */
+
+setInterval(async () => {
+    try {
+        const res = await bot.telegram.getMe();
+        console.log("PING OK:", res.username);
+    } catch (e) {
+        console.log("PING FAIL:", e.message);
+    }
+}, 180000);
+
+/* ================== WEBHOOK SETUP ================== */
 
 app.use(express.json());
 
+const WEBHOOK_PATH = `/bot${BOT_TOKEN}`;
+const WEBHOOK_URL = `https://no-elwa-tglink-production.up.railway.app${WEBHOOK_PATH}`;
+
+/* 🔥 TELEGRAM WEBHOOK HANDLER */
+app.post(WEBHOOK_PATH, async (req, res) => {
+    console.log("🔥 WEBHOOK HIT");
+
+    try {
+        await bot.handleUpdate(req.body);
+        res.sendStatus(200);
+    } catch (err) {
+        console.error("Webhook error:", err);
+        res.sendStatus(500);
+    }
+});
+
+/* TEST ROUTE */
 app.get('/', (req, res) => {
     res.send('Bot is running');
-});
-bot.use((ctx, next) => {
-    console.log("UPDATE RECEIVED IN BOT:", ctx.updateType);
-    return next();
-});
-bot.telegram.getMe().then(() => {
-    console.log("Bot connected to Telegram");
-});
-bot.catch((err) => {
-    console.error("BOT ERROR:", err);
-});
-/* ✅ TELEGRAM WEBHOOK ROUTE */
-app.post(`/bot${BOT_TOKEN}`, (req, res) => {
-    console.log("🔥 WEBHOOK HIT");
-    console.log(req.body);
-
-    bot.handleUpdate(req.body);
-    res.sendStatus(200);
 });
 
 /* ================== START ================== */
@@ -137,12 +172,22 @@ app.post(`/bot${BOT_TOKEN}`, (req, res) => {
 
         await ensureDirs();
         await loadData();
+        await restoreSessions();
 
-        app.listen(PORT, () => {
+        app.listen(PORT, async () => {
             console.log(`HTTP Server running on port ${PORT}`);
+
+            try {
+                await bot.telegram.setWebhook(WEBHOOK_URL);
+                console.log("Webhook set:", WEBHOOK_URL);
+            } catch (err) {
+                console.error("Webhook setup error:", err);
+            }
         });
 
-        console.log("Webhook mode ready");
+        bot.on('message', (ctx) => {
+            console.log("MESSAGE:", ctx.message?.text);
+        });
 
     } catch (err) {
         console.error("STARTUP ERROR:", err);
