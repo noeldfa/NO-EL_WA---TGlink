@@ -2,7 +2,7 @@ console.log("FILE STARTED");
 
 require('dotenv').config();
 
-const { Telegraf, session } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const fs = require('fs/promises');
 const path = require('path');
 const express = require('express');
@@ -15,31 +15,10 @@ const PORT = process.env.PORT || 3000;
 
 if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN");
 
-/* ================== BOT ================== */
+/* ================== STATE ================== */
 
 const bot = new Telegraf(BOT_TOKEN);
-
-/* ✅ Middleware FIRST */
-bot.use(session());
-
-/* 🔥 DEBUG: confirm updates enter Telegraf */
-bot.use((ctx, next) => {
-    console.log("👉 UPDATE TYPE:", ctx.updateType);
-    return next();
-});
-
-/* 🔥 FALLBACK TEST (VERY IMPORTANT) */
-bot.on('text', (ctx, next) => {
-    console.log("📩 TEXT RECEIVED:", ctx.message.text);
-    return next();
-});
-
-/* ================== EXPRESS ================== */
-
 const app = express();
-app.use(express.json());
-
-/* ================== STATE ================== */
 
 const activeSockets = new Map();
 global.activeSockets = activeSockets;
@@ -97,13 +76,16 @@ const statuses = require('./statuses');
 
 /* ================== INIT MODULES ================== */
 
-waManager.init({ bot, activeSockets, assignments, messagingState });
+waManager.init({
+    bot,
+    activeSockets,
+    assignments,
+    messagingState
+});
 
 groups.init({ bot, assignments, messagingState });
 inbox.init({ bot, assignments, messagingState });
 statuses.init({ bot, assignments, messagingState });
-
-console.log("Commands init starting...");
 
 commands.init({
     bot,
@@ -126,8 +108,6 @@ commands.init({
     savePremium: () => saveJSON(PREM_FILE, [...premiumUsers])
 });
 
-console.log("Commands init finished");
-
 /* ================== RESTORE SESSIONS ================== */
 
 async function restoreSessions() {
@@ -148,22 +128,14 @@ async function restoreSessions() {
     }
 }
 
-/* ================== WEBHOOK ================== */
+/* ================== EXPRESS ================== */
+
+app.use(express.json());
 
 const WEBHOOK_PATH = `/bot${BOT_TOKEN}`;
-const WEBHOOK_URL = `https://no-elwa-tglink-production.up.railway.app${WEBHOOK_PATH}`;
 
-app.post(WEBHOOK_PATH, async (req, res) => {
-    console.log("🔥 WEBHOOK HIT");
-
-    try {
-        await bot.handleUpdate(req.body);
-        res.sendStatus(200);
-    } catch (err) {
-        console.error("Webhook error:", err);
-        res.sendStatus(500);
-    }
-});
+/* 🔥 THIS IS THE FIX */
+app.use(bot.webhookCallback(WEBHOOK_PATH));
 
 app.get('/', (req, res) => {
     res.send('Bot is running');
@@ -179,18 +151,15 @@ app.get('/', (req, res) => {
         await loadData();
         await restoreSessions();
 
-        app.listen(PORT, async () => {
+        /* ✅ SET WEBHOOK */
+        const domain = "https://no-elwa-tglink-production.up.railway.app";
+
+        await bot.telegram.setWebhook(domain + WEBHOOK_PATH);
+
+        console.log("🌐 Webhook set:", domain + WEBHOOK_PATH);
+
+        app.listen(PORT, () => {
             console.log(`HTTP Server running on port ${PORT}`);
-
-            try {
-                await bot.telegram.setWebhook(WEBHOOK_URL, {
-                    drop_pending_updates: true
-                });
-
-                console.log("🌐 Webhook set:", WEBHOOK_URL);
-            } catch (err) {
-                console.error("Webhook setup error:", err);
-            }
         });
 
     } catch (err) {
