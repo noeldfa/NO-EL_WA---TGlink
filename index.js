@@ -113,6 +113,9 @@ app.get('/', (req, res) => {
 
 /* ✅ TELEGRAM WEBHOOK ROUTE */
 app.post(`/bot${BOT_TOKEN}`, (req, res) => {
+    console.log("🔥 WEBHOOK HIT");
+    console.log(req.body);
+
     bot.handleUpdate(req.body);
     res.sendStatus(200);
 });
