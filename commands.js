@@ -20,9 +20,9 @@ function init(ctx) {
     /* ================== BASIC ================== */
 
     bot.start((ctx) => {
-        console.log("START COMMAND RECEIVED");
-        ctx.reply("🤖 Ready");
-    });
+    console.log("START COMMAND HIT");
+    ctx.reply("Bot is alive ✅");
+});
 
     /* ================== PAIR ================== */
 
