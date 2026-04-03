@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.0",
+    "express": "^4.19.2"
     "dotenv": "^16.4.5",
     "pino": "^8.17.0",
     "socks-proxy-agent": "^8.0.2",
