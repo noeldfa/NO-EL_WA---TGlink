@@ -76,30 +76,11 @@ const statuses = require('./statuses');
 
 /* ================== INIT MODULES ================== */
 
-waManager.init({
-    bot,
-    activeSockets,
-    assignments,
-    messagingState
-});
+waManager.init({ bot, activeSockets, assignments, messagingState });
 
-groups.init({
-    bot,
-    assignments,
-    messagingState
-});
-
-inbox.init({
-    bot,
-    assignments,
-    messagingState
-});
-
-statuses.init({
-    bot,
-    assignments,
-    messagingState
-});
+groups.init({ bot, assignments, messagingState });
+inbox.init({ bot, assignments, messagingState });
+statuses.init({ bot, assignments, messagingState });
 
 commands.init({
     bot,
@@ -122,48 +103,21 @@ commands.init({
     savePremium: () => saveJSON(PREM_FILE, [...premiumUsers])
 });
 
-/* ================== RESTORE SESSIONS ================== */
+/* ================== EXPRESS ================== */
 
-async function restoreSessions() {
-    try {
-        const dirs = await fs.readdir(SESS_PATH);
-
-        for (const dir of dirs) {
-            if (!dir.includes('_')) continue;
-
-            const [chatId, number] = dir.split('_');
-
-            setTimeout(() => {
-                waManager.start(Number(chatId), number, true);
-            }, 2000);
-        }
-    } catch (err) {
-        console.error("Restore error:", err.message);
-    }
-}
-
-/* ================== KEEP ALIVE ================== */
-
-setInterval(async () => {
-    try {
-        const res = await bot.telegram.getMe();
-        console.log("PING OK:", res.username);
-    } catch (e) {
-        console.log("PING FAIL:", e.message);
-    }
-}, 180000);
-
-/* ================== EXPRESS SERVER ================== */
+app.use(express.json());
 
 app.get('/', (req, res) => {
     res.send('Bot is running');
 });
 
-app.listen(PORT, () => {
-    console.log(`HTTP Server running on port ${PORT}`);
+/* ✅ TELEGRAM WEBHOOK ROUTE */
+app.post(`/bot${BOT_TOKEN}`, (req, res) => {
+    bot.handleUpdate(req.body);
+    res.sendStatus(200);
 });
 
-/* ================== START BOT ================== */
+/* ================== START ================== */
 
 (async () => {
     try {
@@ -171,19 +125,12 @@ app.listen(PORT, () => {
 
         await ensureDirs();
         await loadData();
-        await restoreSessions();
 
-        await bot.telegram.deleteWebhook({
-            drop_pending_updates: true
+        app.listen(PORT, () => {
+            console.log(`HTTP Server running on port ${PORT}`);
         });
 
-        bot.launch()
-            .then(() => console.log("Bot Online"))
-            .catch(err => console.error("Launch error:", err));
-
-        bot.on('message', (ctx) => {
-            console.log("MESSAGE:", ctx.message?.text);
-        });
+        console.log("Webhook mode ready");
 
     } catch (err) {
         console.error("STARTUP ERROR:", err);
