@@ -1,4 +1,3 @@
-
 console.log("FILE STARTED");
 
 require('dotenv').config();
@@ -6,24 +5,27 @@ require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const fs = require('fs/promises');
 const path = require('path');
+const express = require('express');
 
 /* ================== ENV ================== */
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const OWNER_ID = Number(process.env.OWNER_ID);
+const PORT = process.env.PORT || 3000;
 
 if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN");
 
 /* ================== STATE ================== */
 
 const bot = new Telegraf(BOT_TOKEN);
+const app = express();
 
 const activeSockets = new Map();
 global.activeSockets = activeSockets;
 
-const assignments = new Map();      // sessionKey -> telegram group
-const messagingState = new Map();   // sessionKey -> on/off
-const premiumUsers = new Set();     // user IDs
+const assignments = new Map();
+const messagingState = new Map();
+const premiumUsers = new Set();
 
 /* ================== PATHS ================== */
 
@@ -140,7 +142,8 @@ async function restoreSessions() {
     }
 }
 
-/* ================== START ================== */
+/* ================== KEEP ALIVE ================== */
+
 setInterval(async () => {
     try {
         const res = await bot.telegram.getMe();
@@ -148,26 +151,41 @@ setInterval(async () => {
     } catch (e) {
         console.log("PING FAIL:", e.message);
     }
-}, 180000); // every 60s
+}, 180000);
+
+/* ================== EXPRESS SERVER ================== */
+
+app.get('/', (req, res) => {
+    res.send('Bot is running');
+});
+
+app.listen(PORT, () => {
+    console.log(`HTTP Server running on port ${PORT}`);
+});
+
 /* ================== START BOT ================== */
 
 (async () => {
     try {
-        console.log("🚀 Starting bot...");
+        console.log("Starting bot...");
+
+        await ensureDirs();
+        await loadData();
+        await restoreSessions();
 
         await bot.telegram.deleteWebhook({
             drop_pending_updates: true
         });
 
         bot.launch()
-            .then(() => console.log("🤖 Bot Online"))
+            .then(() => console.log("Bot Online"))
             .catch(err => console.error("Launch error:", err));
 
         bot.on('message', (ctx) => {
-            console.log("📩 MESSAGE:", ctx.message?.text);
+            console.log("MESSAGE:", ctx.message?.text);
         });
 
     } catch (err) {
-        console.error("❌ STARTUP ERROR:", err);
+        console.error("STARTUP ERROR:", err);
     }
 })();
